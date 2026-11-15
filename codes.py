@@ -237,12 +237,14 @@ pick = 0              # the account on screen
 shown = False         # a revealed code stays up for 30 s, then hides itself
 
 
-def chip_name():
+def has_trustm():
+    """A Trust M this app could vault into? (wedgie.chip() says 'none' without one,
+    and an ATECC608 can't: optiga is for the Trust M.)"""
     try:
         import wedgie
-        return wedgie.chip()
+        return wedgie.chip() == "OPTIGA Trust M"
     except Exception:
-        return None
+        return False
 
 
 def migrate(old):
@@ -390,7 +392,7 @@ def draw_main():
             ui.say(d, "{g} show  ·  press menu", 228, ui.MUTED)
     else:
         ui.say(d, "2FA Codes", 46, ui.INK, 2)
-        if not vault and chip_name():
+        if not vault and has_trustm():
             ui.say(d, "its chip said no this start:", 76, ui.MUTED)
             ui.say(d, "answer its question, restart", 94, ui.MUTED)
             ui.say(d, "{g} try the chip  ·  press menu", 228, ui.MUTED)
@@ -636,7 +638,7 @@ def run():
             menu()
             drew = None
         if "A" in rk:
-            if not accounts and not vault and chip_name():
+            if not accounts and not vault and has_trustm():
                 load()                    # maybe its chip question gets a yes this time
                 drew = None
             elif not accounts:
