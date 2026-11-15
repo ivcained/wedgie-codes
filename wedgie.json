@@ -3,7 +3,7 @@
     {
       "mod": "codes",
       "name": "2FA Codes",
-      "about": "TOTP codes for your accounts, a green press away. Set the clock once (its page on wedgie.dev open), then it coast. Secrets live in its save: a backup device, not your only one.",
+      "about": "TOTP codes for your accounts, a green press away. Set its clock once; secrets live in its save, so a backup, not your only one.",
       "files": [
         "codes.py"
       ],
