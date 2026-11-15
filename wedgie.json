@@ -1,0 +1,32 @@
+{
+  "apps": [
+    {
+      "mod": "codes",
+      "name": "2FA Codes",
+      "about": "TOTP codes for your accounts, a green press away. Set the clock once (its page on wedgie.dev open), then it coast. Secrets live in its save: a backup device, not your only one.",
+      "files": [
+        "codes.py"
+      ],
+      "entry": "run",
+      "fw": "0.3.61",
+      "net": [
+        "www.cloudflare.com"
+      ],
+      "label": "#3b82f6",
+      "icon": [
+        "............",
+        "...kkkkkk...",
+        "..kbbbbbbk..",
+        "..kbbbbbbk..",
+        "..kbbkkbbk..",
+        "..kbbkkbbk..",
+        "..kbbbbbbk..",
+        "...kbbbbk...",
+        "....kbbk....",
+        ".....kk.....",
+        "............",
+        "............"
+      ]
+    }
+  ]
+}
