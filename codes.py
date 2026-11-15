@@ -1,13 +1,21 @@
-# 2FA Codes: a TOTP authenticator for your wedgie.
+# 2FA Codes: a TOTP authenticator for your wedgie, v2 (the chip vault).
 #   up/down  pick an account        A (green)  show / hide its code
 #   press    the menu (add, clock, delete, about)      Y (red)  back
 # The wedgie has no clock of its own, so "set the clock" asks cloudflare.com over its
 # net (its page on wedgie.dev open in a tab, or `wedgie.py net`): after one set the
 # codes coast on the Pico's crystal (seconds a day, at most).
-# Your secrets live in a plain save: any plugged-in computer can read them without
-# asking (code.md: never keep a secret in a save). Keep it as a backup device, not
-# your only one. Showing a code needs a real press of the green button, never USB.
+# v2: account keys live in the Trust M chip's data objects (DATA[0..10]), not in its
+# saves - saves are readable by any plugged-in computer with no press at all. Getting
+# a key out now needs FULL CONTROL (a red screen and your green press) and, on 0.3.79+,
+# the "use the secure chip?" question too. Never touched: DATA[11] and the key slots
+# (Safe Signer's), and never set_metadata (it can lock the chip for good).
+# With no chip (the /code emulator) or a "no" to the chip question it falls back to
+# saves, exactly like v1 - and says so on the menu and the about page.
+# Still true: the HMAC itself runs on the Pico (a V1 Trust M has no HMAC), so a key is
+# in RAM while its code is drawn. Showing a code needs a real press of the green
+# button, never USB's.
 import time
+import sys
 import struct
 import hashlib
 from lcd import LCD, Keys
@@ -19,6 +27,7 @@ keys = Keys()                  # navigation: presses a computer sends are fine
 real = Keys(physical=True)     # showing a code is a person's press, never USB's
 
 TIME_URL = "https://www.cloudflare.com/cdn-cgi/trace"
+VAULT_SLOTS = 11               # DATA[0..10]; DATA[11] is Safe Signer's
 
 # ---------------------------------------------------------------- sha-1 and hmac
 
@@ -131,26 +140,167 @@ def totp(ac, t):
     return "0" * (ac["digits"] - len(s)) + s
 
 
+# ---------------------------------------------------------------- the chip vault
+
+# One account per data object, as one line: name|secret|digits|period|algo
+# (name 12, secret up to 64, params 1 each: 83 bytes at most, of 140).
+ALGOS = {"SHA1": "1", "SHA256": "2"}
+ALGOS_R = {"1": "SHA1", "2": "SHA256"}
+
+
+def pack(ac):
+    return "|".join((ac["name"], ac["secret"], str(ac["digits"]), str(ac["period"]),
+                     ALGOS.get(ac.get("algo", "SHA1"), "1")))
+
+
+def unpack(s):
+    """An account from a vault line, or None if it isn't one of ours (another app's)."""
+    p = s.split("|")
+    if len(p) != 5:
+        return None
+    try:
+        ac = {"name": p[0][:12], "secret": p[1], "digits": int(p[2]), "period": int(p[3]),
+              "algo": ALGOS_R.get(p[4], "SHA1")}
+    except ValueError:
+        return None
+    if not ac["name"] or not ac["secret"] or ac["digits"] not in (6, 8) or ac["period"] < 1:
+        return None
+    try:
+        b32(ac["secret"])
+    except ValueError:
+        return None
+    return ac
+
+
+def vault_probe():
+    """What's in the chip's data objects: (accounts, error). accounts is None on error
+    (no chip, a refused chip question, an optiga error); [] means the chip works and
+    holds nothing of ours. Unparseable non-empty objects are other apps': skipped,
+    never reused."""
+    try:
+        import optiga
+    except ImportError:
+        return None, "no chip"
+    try:
+        c = optiga.Chip()
+        out = []
+        try:
+            for i in range(VAULT_SLOTS):
+                b = c.read(optiga.DATA[i])
+                if b:
+                    ac = unpack(b.decode())
+                    if ac:
+                        ac["_slot"] = i
+                        out.append(ac)
+        finally:
+            c.close()
+        return out, None
+    except Exception as e:                     # optiga.Error, OSError, a refused chip
+        return None, str(e)
+
+
+def vault_write(i, ac):
+    """One account into slot i. True: the chip read it back the same."""
+    import optiga
+    line = pack(ac).encode()
+    c = optiga.Chip()
+    try:
+        c.write(optiga.DATA[i], line, erase=True)
+        return c.read(optiga.DATA[i]) == line
+    finally:
+        c.close()
+
+
+def vault_erase(i):
+    import optiga
+    c = optiga.Chip()
+    try:
+        c.write(optiga.DATA[i], b"", erase=True)
+    finally:
+        c.close()
+
+
+def vault_free(used):
+    for i in range(VAULT_SLOTS):
+        if i not in used:
+            return i
+    return None
+
+
 # ---------------------------------------------------------------- state
 
-accounts = []
+accounts = []         # in RAM while it runs (the hmac is computed on the Pico)
+vault = False         # True: the chip holds the keys; False: saves do (v1 mode)
+vault_err = None      # why the chip isn't in use, when it isn't
 clock = None          # {"t": unix at sync, "ms": ticks at sync}, or None
 pick = 0              # the account on screen
 shown = False         # a revealed code stays up for 30 s, then hides itself
 
 
+def chip_name():
+    try:
+        import wedgie
+        return wedgie.chip()
+    except Exception:
+        return None
+
+
+def migrate(old):
+    """v1 accounts (secrets in saves) move into the chip, all or nothing."""
+    global accounts
+    used = set(a["_slot"] for a in accounts)
+    keep = []
+    for a in old:
+        i = vault_free(used)
+        if i is None or not vault_write(i, a):
+            ui.page(lcd, "Chip full or refused", [("your keys stay in its saves.", ui.INK),
+                                                  ("nothing was moved.", ui.MUTED)], "{g} ok")
+            wait_a()
+            return False
+        used.add(i)
+        a["_slot"] = i
+        keep.append(a)
+    save.delete("accounts")
+    accounts = keep
+    return True
+
+
 def load():
-    global accounts, clock
-    accounts = save.load("accounts", [])
+    global accounts, vault, vault_err, clock
+    vault = False
+    vault_err = None
     clock = save.load("clock", None)
+    accs, err = vault_probe()
+    if accs is not None:
+        old = [a for a in save.load("accounts", []) if a.get("secret")]
+        if old and ui.ask(lcd, "Move your keys into the chip?",
+                          ["they leave its saves, where", "a plugged-in computer", "reads them with no press."]):
+            accounts = accs
+            if migrate(old):
+                vault = True
+                return
+        accounts = save.load("accounts", [])
+        if not accounts:
+            accounts = accs
+            vault = True
+            return
+        vault_err = "keys are still in saves"
+    else:
+        vault_err = err or "chip off"
+        accounts = save.load("accounts", [])
+        sys.modules.pop("optiga", None)        # give its ~10 KB back
 
 
 def store_accounts():
+    """save mode only: the whole list back into the accounts save."""
+    global accounts
+    if vault:
+        return
     try:
         save.store("accounts", accounts)
     except OSError:
         ui.page(lcd, "Flash full", [("its saves ran out of room.", ui.RED), ("delete one, then add.", ui.MUTED)], "{g} ok")
-    load()
+    accounts = save.load("accounts", [])
 
 
 def now():
@@ -204,10 +354,6 @@ def wait_a():
 
 # ---------------------------------------------------------------- screens
 
-def grouped(s, n=4):
-    return " ".join(s[i:i + n] for i in range(0, len(s), n))
-
-
 def draw_main():
     d = lcd
     d.fill(ui.WHITE)
@@ -243,11 +389,16 @@ def draw_main():
                 d.fill_rect(40, 182, w, 8, ui.GREEN)
             ui.say(d, "{g} show  ·  press menu", 228, ui.MUTED)
     else:
-        ui.say(d, "2FA Codes", 60, ui.INK, 2)
-        ui.say(d, "add your first account:", 100, ui.MUTED)
-        ui.say(d, "its key, from the site's", 118, ui.MUTED)
-        ui.say(d, "2FA setup page", 136, ui.MUTED)
-        ui.say(d, "{g} add  ·  press menu", 228, ui.MUTED)
+        ui.say(d, "2FA Codes", 46, ui.INK, 2)
+        if not vault and chip_name():
+            ui.say(d, "its chip said no this start:", 76, ui.MUTED)
+            ui.say(d, "answer its question, restart", 94, ui.MUTED)
+            ui.say(d, "{g} try the chip  ·  press menu", 228, ui.MUTED)
+        else:
+            ui.say(d, "add your first account:", 92, ui.MUTED)
+            ui.say(d, "its key, from the site's", 110, ui.MUTED)
+            ui.say(d, "2FA setup page", 128, ui.MUTED)
+            ui.say(d, "{g} add  ·  press menu", 228, ui.MUTED)
     d.show()
 
 
@@ -272,12 +423,14 @@ def menu():
                     d.text("%02d:%02d · set %s" % (lt[3], lt[4], ago()), 4, 10, ui.INK)
                 except Exception:
                     d.text("set " + ago(), 4, 10, ui.INK)
+            d.text("keys in the chip" if vault else "keys in saves", 236 - 8 * 14, 10,
+                   ui.GREEN_D if vault else ui.RED)
             for i, m in enumerate(MENU):
                 col = ui.INK if i == c else ui.MUTED
                 x = 8 if i == c else 12
                 if i == 2 and not accounts:
                     col = ui.GREY
-                d.text(m, x, 52 + i * 24, col)
+                d.text(m, x, 56 + i * 24, col)
             ui.say(d, "{g} pick  ·  {r} back", 228, ui.MUTED)
             d.show()
             draw = False
@@ -296,19 +449,36 @@ def menu():
                 sync()
                 return
             if m == "delete this one" and accounts:
-                a = accounts[pick]
-                if ui.ask(lcd, "Delete " + a["name"] + "?", ["the site keeps working.", "add it again with its key."]):
-                    del accounts[pick]
-                    pick = 0
-                    store_accounts()
+                delete()
                 return
             if m == "about":
                 ui.page(lcd, "2FA Codes", [("a TOTP authenticator,", ui.INK), ("like your phone's.", ui.INK),
-                                           ("secrets live in its save:", ui.MUTED), ("a plugged-in computer", ui.MUTED),
-                                           ("can read them. a backup", ui.MUTED), ("device, not your only one.", ui.MUTED)], "{g} back")
+                                           ("keys in its Trust M:", ui.MUTED), ("reading them out of the", ui.MUTED),
+                                           ("chip needs full control", ui.MUTED), ("and your green press.", ui.MUTED),
+                                           ("(no chip: saves, like v1.)", ui.MUTED)], "{g} back")
                 wait_a()
                 return
         time.sleep_ms(40)
+
+
+def delete():
+    global pick, accounts
+    a = accounts[pick]
+    if not ui.ask(lcd, "Delete " + a["name"] + "?", ["the site keeps working.", "add it again with its key."]):
+        return
+    if vault:
+        try:
+            vault_erase(a["_slot"])
+        except Exception as e:
+            ui.page(lcd, "Chip error", [(str(e)[:26], ui.RED), ("the key may still be", ui.MUTED), ("in the chip.", ui.MUTED)], "{g} ok")
+            wait_a()
+            return
+        accounts = [x for x in accounts if x is not a]
+        pick = 0
+    else:
+        del accounts[pick]
+        pick = 0
+        store_accounts()
 
 
 # ---------------------------------------------------------------- keyboard
@@ -415,9 +585,29 @@ def add():
         sync()
     ac = {"name": (name or "ACCT %d" % (len(accounts) + 1)).upper()[:12], "secret": secret,
           "digits": digits, "period": period, "algo": "SHA1"}
-    accounts.append(ac)
+    if vault:
+        used = set(a["_slot"] for a in accounts)
+        i = vault_free(used)
+        if i is None:
+            ui.page(lcd, "Chip full", [("its 11 key slots are all", ui.INK), ("taken. delete one first.", ui.MUTED)], "{g} back")
+            wait_a()
+            return
+        try:
+            ok = vault_write(i, ac)
+        except Exception as e:
+            ui.page(lcd, "Chip error", [(str(e)[:26], ui.RED), ("the key isn't saved.", ui.MUTED)], "{g} back")
+            wait_a()
+            return
+        if not ok:
+            ui.page(lcd, "Chip mismatch", [("it read back different.", ui.RED), ("try again.", ui.MUTED)], "{g} back")
+            wait_a()
+            return
+        ac["_slot"] = i
+        accounts.append(ac)
+    else:
+        accounts.append(ac)
+        store_accounts()
     pick = len(accounts) - 1
-    store_accounts()
     shown = True
 
 
@@ -446,7 +636,10 @@ def run():
             menu()
             drew = None
         if "A" in rk:
-            if not accounts:
+            if not accounts and not vault and chip_name():
+                load()                    # maybe its chip question gets a yes this time
+                drew = None
+            elif not accounts:
                 add()
                 drew = None
             elif t is None:

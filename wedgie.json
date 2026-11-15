@@ -3,7 +3,7 @@
     {
       "mod": "codes",
       "name": "2FA Codes",
-      "about": "TOTP codes for your accounts, a green press away. Set its clock once; secrets live in its save, so a backup, not your only one.",
+      "about": "TOTP 2FA codes, keys kept in its Trust M chip (falls back to saves with no chip). A green press shows each code; set its clock once.",
       "files": [
         "codes.py"
       ],
