@@ -14,8 +14,14 @@
 # Still true: the HMAC itself runs on the Pico (a V1 Trust M has no HMAC), so a key is
 # in RAM while its code is drawn. Showing a code needs a real press of the green
 # button, never USB's.
+# Speed: the screen is pushed whole only when its content changes (an account switch,
+# a reveal, a new code); every other second pushes only the countdown band
+# (lcd.show(164, 196), ~3 ms instead of ~25), and the keyboard pushes only the cells
+# that moved (show_rect, ~2 ms a key instead of ~32). A code is computed once per
+# 30 s window, never per redraw, and a code that expired hides itself.
 import time
 import sys
+import gc
 import struct
 import hashlib
 from lcd import LCD, Keys
@@ -234,7 +240,7 @@ vault = False         # True: the chip holds the keys; False: saves do (v1 mode)
 vault_err = None      # why the chip isn't in use, when it isn't
 clock = None          # {"t": unix at sync, "ms": ticks at sync}, or None
 pick = 0              # the account on screen
-shown = False         # a revealed code stays up for 30 s, then hides itself
+shown = False         # a revealed code hides itself when it expires
 
 
 def has_trustm():
@@ -332,9 +338,11 @@ def sync():
         i = txt.find("ts=")
         t = int(txt[i + 3:txt.find("\n", i)].split(".")[0])
     except Exception as e:                      # net.Error and the rest
+        gc.collect()                           # its ~30 KB back
         ui.page(lcd, "No clock", [(str(e)[:26], ui.RED), ("keep its page open on", ui.MUTED), ("wedgie.dev, or wedgie.py net", ui.MUTED)], "{g} back")
         wait_a()
         return False
+    gc.collect()
     global clock
     old = now()
     clock = {"t": t, "ms": time.ticks_ms()}
@@ -357,6 +365,7 @@ def wait_a():
 # ---------------------------------------------------------------- screens
 
 def draw_main():
+    """The main screen, into the framebuffer only: the caller pushes what changed."""
     d = lcd
     d.fill(ui.WHITE)
     ui.band(d)
@@ -365,7 +374,7 @@ def draw_main():
         nm = a["name"][:26]
         d.text(nm, 4, 10, ui.INK)
         ix = "%d/%d" % (pick + 1, len(accounts))
-        d.text(ix, 236 - 8 * len(ix), 10, ui.MUTED)
+        d.text(ix, ui.right() - 8 * len(ix), 10, ui.MUTED)
         t = now()
         if t is None:
             ui.say(d, "no clock", 96, ui.RED, 2)
@@ -382,7 +391,7 @@ def draw_main():
             else:
                 d.big_text("......", (240 - 24 * 6) // 2, 92, ui.MUTED, 3)
             left = a["period"] - t % a["period"]
-            d.text("%ds" % left, 236 - 16, 168, ui.MUTED)
+            d.text("%ds" % left, ui.right() - 16, 168, ui.MUTED)
             w = 160 * left // a["period"]
             d.fill_rect(40, 182, 160, 8, ui.GREY)
             if left <= 5:
@@ -401,7 +410,6 @@ def draw_main():
             ui.say(d, "its key, from the site's", 110, ui.MUTED)
             ui.say(d, "2FA setup page", 128, ui.MUTED)
             ui.say(d, "{g} add  ·  press menu", 228, ui.MUTED)
-    d.show()
 
 
 MENU = ("add an account", "set the clock", "delete this one", "about")
@@ -425,7 +433,7 @@ def menu():
                     d.text("%02d:%02d · set %s" % (lt[3], lt[4], ago()), 4, 10, ui.INK)
                 except Exception:
                     d.text("set " + ago(), 4, 10, ui.INK)
-            d.text("keys in the chip" if vault else "keys in saves", 236 - 8 * 14, 10,
+            d.text("keys in the chip" if vault else "keys in saves", ui.right() - 8 * 14, 10,
                    ui.GREEN_D if vault else ui.RED)
             for i, m in enumerate(MENU):
                 col = ui.INK if i == c else ui.MUTED
@@ -493,18 +501,20 @@ def kb_cell(i):
     return i % COLS, i // COLS
 
 
-def kb_draw(prompt, s, cx, cy):
+def kb_render(prompt, s, cx, cy):
+    """The keyboard, into the framebuffer only. The caller pushes what changed: the
+    typed line on a letter, the two cells on a cursor move, everything after an ask."""
     d = lcd
     d.fill(ui.WHITE)
     ui.band(d)
     d.text(prompt, 4, 10, ui.INK)
     tail = s[-16:]
     d.text(((".." + tail) if len(s) > 16 else tail) or "-", 4, 28, ui.MUTED)
-    d.text(str(len(s)), 236 - 8 * (2 if len(s) > 9 else 1), 28, ui.MUTED)
+    d.text(str(len(s)), ui.right() - 8 * (2 if len(s) > 9 else 1), 28, ui.MUTED)
     for i in range(32):
         x, y = kb_cell(i)
         d.text(B32[i], x * CW + 17, y * CH + KY + 8, ui.INK)
-    for j, lab in ((32, "<"), (33, "ok")):
+    for j in (32, 33):
         x, y = kb_cell(j)
         if j == 33:
             d.text("ok", x * CW + 15, y * CH + KY + 8, ui.GREEN_D)
@@ -513,7 +523,6 @@ def kb_draw(prompt, s, cx, cy):
     d.rect(cx * CW + 2, cy * CH + KY + 2, CW - 4, CH - 4, ui.GREEN)
     d.rect(cx * CW + 3, cy * CH + KY + 3, CW - 6, CH - 6, ui.GREEN)
     ui.say(d, "{g} pick · {k} del · press ok", 228, ui.MUTED)
-    d.show()
 
 
 def keyboard(prompt, minimum=0):
@@ -524,9 +533,12 @@ def keyboard(prompt, minimum=0):
     rep = 0                   # the last move's ticks (0: none)
     delay = 350
     DIRS = (("left", -1, 0), ("right", 1, 0), ("up", 0, -1), ("down", 0, 1))
-    kb_draw(prompt, s, cx, cy)
+    kb_render(prompt, s, cx, cy)
+    lcd.show()
+    full = False              # an ask covered the screen: redraw it all
     while True:
         k = keys.pressed()
+        was = (cx, cy, s)
         if "A" in k:
             i = cy * COLS + cx
             if i == 32:
@@ -543,6 +555,7 @@ def keyboard(prompt, minimum=0):
         if "Y" in k:
             if not s or ui.ask(lcd, "Throw it away?", ["what you typed is lost."]):
                 return None
+            full = True
         moved = False
         for name, dx, dy in DIRS:
             if name in k:
@@ -562,8 +575,18 @@ def keyboard(prompt, minimum=0):
                     delay = 130
                     moved = True
                 break
-        if moved or k:
-            kb_draw(prompt, s, cx, cy)
+        if (cx, cy, s) != was or full:
+            kb_render(prompt, s, cx, cy)
+            if full:
+                lcd.show()
+                full = False
+            elif s != was[2]:
+                lcd.show_rect(0, 22, 240, 16)               # the typed line and count
+            else:
+                ox, oy = was[0], was[1]                     # only the cursor moved
+                lcd.show_rect(ox * CW, oy * CH + KY, CW, CH)
+                if (ox, oy) != (cx, cy):
+                    lcd.show_rect(cx * CW, cy * CH + KY, CW, CH)
         time.sleep_ms(40)
 
 
@@ -609,6 +632,7 @@ def add():
     else:
         accounts.append(ac)
         store_accounts()
+    gc.collect()
     pick = len(accounts) - 1
     shown = True
 
@@ -618,14 +642,31 @@ def add():
 def run():
     global pick, shown
     load()
+    gc.collect()             # the chip probe and the optiga import's leavings
     shown = False
-    drew = None          # the (second, account, shown) on screen now
+    drew = None              # (account, shown, its code window) now on screen
+    drew_t = None            # the second now on screen
+    tick = None              # the window the shown code is from
     draw_main()
+    lcd.show()
     while True:
         t = now()
-        if drew != (t, pick, shown):
+        if accounts:
+            w = t // accounts[pick]["period"] if t is not None else None
+            if shown and tick is not None and w != tick:
+                shown = False            # that code expired: hide it
+            tick = w
+        else:
+            tick = None
+        key = (pick, shown, tick if shown else None)
+        if key != drew:
             draw_main()
-            drew = (t, pick, shown)
+            lcd.show()                   # the whole screen changed
+            drew, drew_t = key, t
+        elif t != drew_t:
+            draw_main()
+            lcd.show(164, 196)           # only the countdown moved (~3 ms)
+            drew_t = t
         k = keys.pressed()
         rk = real.pressed()
         if "up" in k and len(accounts) > 1:
