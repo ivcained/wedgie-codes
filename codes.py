@@ -696,11 +696,65 @@ def add():
 
 # ---------------------------------------------------------------- main loop
 
+def take_import():
+    """Keys handed over by import.py (a save): green files them into the chip."""
+    global shown, pick
+    text = save.load("import", "")
+    if not isinstance(text, str) or not text.strip():
+        return
+    got = []
+    for line in text.split("\n"):
+        ac = unpack(line) if line else None
+        if ac:
+            got.append(ac)
+    if not got:
+        try:
+            save.delete("import")
+        except Exception:
+            pass
+        return
+    names = ", ".join(ac["name"][:12] for ac in got[:3]) + (" +%d" % (len(got) - 3) if len(got) > 3 else "")
+    if not ui.ask(lcd, "Import %d key%s?" % (len(got), "" if len(got) == 1 else "s"),
+                  [(names, ui.INK), ("from your computer.", ui.MUTED)]):
+        return                       # no: it stays in the save for another start
+    moved = 0
+    for ac in got:
+        if vault:
+            i = vault_free(set(a["_slot"] for a in accounts))
+            if i is None:
+                ui.page(lcd, "Chip full", [("its 11 key slots are all", ui.INK), ("taken. delete one first.", ui.MUTED)], "{g} back")
+                wait_a()
+                break
+            try:
+                if not vault_write(i, ac):
+                    continue
+            except Exception as e:
+                ui.page(lcd, "Chip error", [(str(e)[:26], ui.RED), ("nothing was moved.", ui.MUTED)], "{g} back")
+                wait_a()
+                break
+            ac["_slot"] = i
+            accounts.append(ac)
+            moved += 1
+        else:
+            accounts.append(ac)
+            moved += 1
+    if not vault and moved:
+        store_accounts()
+    try:
+        save.delete("import")
+    except Exception:
+        pass
+    if moved:
+        pick = len(accounts) - 1
+        shown = True
+
+
 def run():
     global pick, shown
     load()
     gc.collect()             # the chip probe and the optiga import's leavings
     shown = False
+    take_import()            # keys a computer handed over (import.py): one green press
     drew = None              # (account, shown, its code window) now on screen
     drew_t = None            # the second now on screen
     tick = None              # the window the shown code is from

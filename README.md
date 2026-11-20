@@ -23,6 +23,23 @@ is needed to reveal a code: presses a computer sends over USB never count. The n
 code is shown small under it, so you can keep typing when the window flips; both
 hide again when the code expires.
 
+## The easy way: scan the QR with your Mac, not type 32 letters
+
+The wedgie has no camera, so your computer reads the QR and hands the key over USB.
+`import.py` (in this repo, beside `wedgie.py` and `pyserial`) takes the `otpauth://`
+link the QR holds - scan the QR with your phone camera to get it, or paste the link
+the setup page copies - and parks it where the wedgie finds it on its next start:
+
+```
+python3 import.py "otpauth://totp/GitHub:me?secret=JBSWY3DPEHPK3PXP&issuer=GitHub"
+```
+
+Then press the wedgie's green button once (the save write asks), replug or restart
+the app, and it asks **"Import 1 key?"** - green files it straight into the chip.
+A QR screenshot works too if `brew install zbar` is done: `python3 import.py qr.png`.
+Sites that show only the key: `python3 import.py --secret JBSWY3DPEHPK3PXP --name GitHub`.
+It refuses what the wedgie cannot do (SHA-256, HOTP, 7 digits) with a plain sentence.
+
 ## Where the keys live (the honest security model)
 
 - **With a Trust M chip (real wedgies):** each key is one line in a chip data object
