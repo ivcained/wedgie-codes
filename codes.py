@@ -353,9 +353,10 @@ def ago():
     return str(a // 86400) + "d ago"
 
 
-def sync():
-    """The wedgie has no clock: ask cloudflare's trace page for the time, or take the time
-    a computer handed over (import.py --clock) - a wedgie with no chip can't do TLS at all."""
+def sync(silent=False):
+    """Ask cloudflare's trace page for the time, or take the time a computer handed over.
+    At boot (silent=True) it never shows a page: a failed fetch there must not take the
+    screen hostage with an error nobody knows how to dismiss."""
     global clock
     handed = save.load("clock_set", 0)
     if handed:
@@ -366,10 +367,8 @@ def sync():
         except Exception:
             pass
         return True
-    # no chip() gate here: chip() can say "none" on a unit that has one (the chip
-    # question, a busy I2C), and refusing to try would strand the clock forever.
-    # Just try; a chipless unit fails fast and its error page says what to do.
-    ui.progress("Setting the clock", "cloudflare.com", bar=False)
+    if not silent:
+        ui.progress("Setting the clock", "cloudflare.com", bar=False)
     try:
         import net
         txt = net.get(TIME_URL)
@@ -377,34 +376,41 @@ def sync():
         t = int(txt[i + 3:txt.find("\n", i)].split(".")[0])
     except Exception as e:                      # net.Error and the rest
         gc.collect()                           # its ~30 KB back
-        s = str(e)
-        if isinstance(e, MemoryError) or "alloc" in s.lower():
-            ui.page(lcd, "No clock", [("no memory for TLS:", ui.RED),
-                                      ("this wedgie has no chip,", ui.MUTED),
-                                      ("so it can't reach the net.", ui.MUTED),
-                                      ("set it from your computer", ui.MUTED)], "{g} back")
-        elif "chip" in s or "Trust M" in s:
-            # chipless (/code): TLS needs the chip, so there is no internet at all
-            ui.page(lcd, "No clock", [("this emulator has no chip,", ui.RED),
-                                      ("so no internet here.", ui.MUTED),
-                                      ("a real wedgie sets its", ui.MUTED),
-                                      ("clock in one press.", ui.MUTED)], "{g} back")
-        elif "no internet" in s:
-            ui.page(lcd, "No clock", [("its page is not open:", ui.RED),
-                                      ("keep wedgie.dev/connect", ui.MUTED),
-                                      ("open on this wedgie,", ui.MUTED),
-                                      ("or run wedgie.py net", ui.MUTED)], "{g} back")
+        if silent:
+            return False                       # the main screen already says "no clock"
+        s = str(e) or type(e).__name__
+        low = s.lower()
+        if isinstance(e, MemoryError) or "alloc" in low:
+            lines = [("no memory for TLS.", ui.RED),
+                     ("hand it the time from", ui.MUTED),
+                     ("your computer instead:", ui.MUTED),
+                     ("import.py --clock", ui.INK)]
+        elif "internet" in low or "host" in low or "connect" in low:
+            lines = [("no internet right now:", ui.RED),
+                     ("keep wedgie.dev/connect", ui.MUTED),
+                     ("open in a tab, or run:", ui.MUTED),
+                     ("wedgie.py net .", ui.INK)]
+        elif "chip" in low or "trust" in low:
+            lines = [("the chip said no:", ui.RED),
+                     ("answer its question as", ui.MUTED),
+                     ("it starts, then press", ui.MUTED),
+                     ("{g} on the main screen", ui.MUTED)]
         else:
-            ui.page(lcd, "No clock", [(s[:26], ui.RED), ("try again from the menu.", ui.MUTED)], "{g} back")
+            lines = [(s[:22], ui.RED), (s[22:44], ui.RED),
+                     ("or hand it the time:", ui.MUTED),
+                     ("import.py --clock", ui.INK)]
+        ui.page(lcd, "No clock", lines, "{g} back")
         wait_a()
         return False
     gc.collect()
     old = now()
     clock = {"t": t, "ms": time.ticks_ms()}
     save.store("clock", clock)
-    if old is not None:
+    if old is not None and not silent:
         d = t - old
-        ui.page(lcd, "Clock set", [("was " + ("%+d" % d if abs(d) > 1 else "right") + "s off", ui.INK if abs(d) < 30 else ui.RED), (ago() + " it was set", ui.MUTED)], "{g} ok")
+        ui.page(lcd, "Clock set", [("was " + ("%+d" % d if abs(d) > 1 else "right") + "s off",
+                                   ui.INK if abs(d) < 30 else ui.RED),
+                                  (ago() + " it was set", ui.MUTED)], "{g} ok")
         wait_a()
     return True
 
@@ -836,7 +842,7 @@ def run():
     load()
     gc.collect()             # the chip probe and the optiga import's leavings
     if now() is None and has_trustm():
-        sync()               # a chip can ask the net for the time: no press, no computer
+        sync(silent=True)    # a chip can ask the net for the time; quietly, so a fail is not a wall
         gc.collect()
     shown = False
     take_import()            # keys a computer handed over (import.py): one green press
