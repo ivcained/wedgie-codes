@@ -402,6 +402,30 @@ def sync():
     return True
 
 
+def align():
+    """Line the clock up by hand: green the instant the site's own countdown flips to 30.
+    That press IS a window start, so the clock can be snapped to it exactly."""
+    global clock
+    t = now()
+    if t is None:
+        ui.page(lcd, "No clock yet", [("take the time from your", ui.MUTED), ("computer first (import.py", ui.MUTED), ("--clock), then line it up.", ui.MUTED)], "{g} back")
+        wait_a()
+        return
+    ui.page(lcd, "Line up the clock", [("watch the site's own", ui.INK),
+                                       ("countdown, then press", ui.INK),
+                                       ("green the instant it", ui.INK),
+                                       ("flips back to 30.", ui.INK)], "{g} it flipped")
+    wait_a()
+    t = now()
+    if t is None:
+        return
+    base = int((t + 15) // 30) * 30        # the nearest window start to that press
+    clock = {"t": base, "ms": time.ticks_ms()}
+    save.store("clock", clock)
+    ui.page(lcd, "Clock lined up", [("its countdown now flips", ui.INK), ("with the site's.", ui.MUTED)], "{g} ok")
+    wait_a()
+
+
 def wait_a():
     while True:
         k = keys.pressed()
@@ -476,7 +500,7 @@ def draw_main():
             ui.say(d, "{g} add  ·  press menu", 228, ui.MUTED)
 
 
-MENU = ("add an account", "set the clock", "delete this one", "about")
+MENU = ("add an account", "set the clock", "line up the clock", "delete this one", "about")
 
 
 def menu():
@@ -521,6 +545,9 @@ def menu():
                 return
             if m == "set the clock":
                 sync()
+                return
+            if m == "line up the clock":
+                align()
                 return
             if m == "delete this one" and accounts:
                 delete()
