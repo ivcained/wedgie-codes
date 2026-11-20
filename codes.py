@@ -345,7 +345,7 @@ def ago():
 
 def sync():
     """The wedgie has no clock: ask cloudflare's trace page for the time."""
-    ui.page(lcd, "Setting the clock", [("asking cloudflare.com", ui.MUTED), ("for the time: a few", ui.MUTED), ("seconds.", ui.MUTED)], "")
+    ui.progress("Setting the clock", "cloudflare.com", bar=False)
     try:
         import net
         txt = net.get(TIME_URL)
@@ -406,7 +406,6 @@ def code_of(a, t):
 
 def draw_main():
     """The main screen, into the framebuffer only: the caller pushes what changed."""
-    print("DBG draw", len(accounts), shown)
     d = lcd
     d.fill(ui.WHITE)
     ui.band(d)
@@ -718,7 +717,6 @@ def run():
             tick = None
         key = (pick, shown, tick if shown else None)
         if key != drew:
-            print("DBG full show", key)
             draw_main()
             lcd.show()                   # the whole screen changed
             drew, drew_t = key, t
