@@ -246,13 +246,17 @@ shown = False         # a revealed code hides itself when it expires
 
 
 def has_trustm():
-    """A Trust M this app could vault into? (wedgie.chip() says 'none' without one,
-    and an ATECC608 can't: optiga is for the Trust M.)"""
+    """A Trust M this app could vault into? Firmware 0.3.88 returns a DICT from
+    wedgie.chip() ({'kind': 'trustm', 'chip': 'OPTIGA Trust M', ...}); older ones
+    returned a string. Accept both, and never treat an ATECC608 as vaultable."""
     try:
         import wedgie
-        return wedgie.chip() == "OPTIGA Trust M"
+        c = wedgie.chip()
     except Exception:
         return False
+    if isinstance(c, dict):
+        return c.get("chip") == "OPTIGA Trust M" or c.get("kind") == "trustm"
+    return c == "OPTIGA Trust M"
 
 
 def migrate(old):
