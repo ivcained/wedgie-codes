@@ -510,7 +510,7 @@ def delete():
 # ---------------------------------------------------------------- keyboard
 
 KB = B32                     # 32 letters: 5 rows of 6, then 2 + del + ok
-COLS, ROWS, CW, CH, KY = 6, 6, 40, 28, 48
+COLS, ROWS, CW, CH, KY = 6, 6, 40, 27, 52   # KY: the grid starts under the waistband
 
 
 def kb_cell(i):
@@ -522,16 +522,16 @@ def kb_render(prompt, s, cx, cy, minimum=0, blocked=False):
     typed line on a letter, the two cells on a cursor move, everything after an ask."""
     d = lcd
     d.fill(ui.WHITE)
-    ui.band(d)
+    ui.band(d)                    # the waistband sits at y 10..33: nothing goes there
     d.text(prompt, 4, 10, ui.INK)
     if blocked and len(s) < minimum:
-        ui.say(d, "need %d more letters" % (minimum - len(s)), 28, ui.RED)
+        ui.say(d, "need %d more" % (minimum - len(s)), 36, ui.RED)
     else:
         tail = s[-26:]
-        d.text(((">>" + tail) if len(s) > 26 else tail) or "-", 4, 28, ui.MUTED)
+        d.text(((">>" + tail) if len(s) > 26 else tail) or "-", 4, 36, ui.MUTED)
     count = str(len(s))
     cc = ui.RED if len(s) < minimum else ui.MUTED
-    d.text(count, ui.right() - 8 * len(count), 28, cc)
+    d.text(count, ui.right() - 8 * len(count), 36, cc)
     for i in range(32):
         x, y = kb_cell(i)
         d.text(B32[i], x * CW + 17, y * CH + KY + 8, ui.INK)
@@ -611,7 +611,7 @@ def keyboard(prompt, minimum=0):
                 lcd.show()
                 full = False
             elif s != was[2] or blocked != was[3]:
-                lcd.show_rect(0, 22, 240, 16)               # the typed line and count
+                lcd.show_rect(0, 30, 240, 22)               # the typed line and count
             else:
                 ox, oy = was[0], was[1]                     # only the cursor moved
                 lcd.show_rect(ox * CW, oy * CH + KY, CW, CH)
