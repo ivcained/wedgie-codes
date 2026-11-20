@@ -552,7 +552,7 @@ def kb_render(prompt, s, cx, cy, minimum=0, blocked=False):
     ui.band(d)                    # the waistband sits at y 10..33: nothing goes there
     d.text(prompt, 4, 10, ui.INK)
     if blocked and len(s) < minimum:
-        ui.say(d, "need %d more" % (minimum - len(s)), 36, ui.RED)
+        ui.say(d, "need %d more letters" % (minimum - len(s)), 36, ui.RED)
     else:
         tail = s[-26:]
         d.text(((">>" + tail) if len(s) > 26 else tail) or "-", 4, 36, ui.MUTED)
