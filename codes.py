@@ -339,7 +339,20 @@ def sync():
         t = int(txt[i + 3:txt.find("\n", i)].split(".")[0])
     except Exception as e:                      # net.Error and the rest
         gc.collect()                           # its ~30 KB back
-        ui.page(lcd, "No clock", [(str(e)[:26], ui.RED), ("keep its page open on", ui.MUTED), ("wedgie.dev, or wedgie.py net", ui.MUTED)], "{g} back")
+        s = str(e)
+        if "chip" in s or "Trust M" in s:
+            # chipless (/code): TLS needs the chip, so there is no internet at all
+            ui.page(lcd, "No clock", [("this emulator has no chip,", ui.RED),
+                                      ("so no internet here.", ui.MUTED),
+                                      ("a real wedgie sets its", ui.MUTED),
+                                      ("clock in one press.", ui.MUTED)], "{g} back")
+        elif "no internet" in s:
+            ui.page(lcd, "No clock", [("its page is not open:", ui.RED),
+                                      ("keep wedgie.dev/connect", ui.MUTED),
+                                      ("open on this wedgie,", ui.MUTED),
+                                      ("or run wedgie.py net", ui.MUTED)], "{g} back")
+        else:
+            ui.page(lcd, "No clock", [(s[:26], ui.RED), ("try again from the menu.", ui.MUTED)], "{g} back")
         wait_a()
         return False
     gc.collect()
