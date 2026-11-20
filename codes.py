@@ -388,12 +388,8 @@ def sync():
 
 
 def wait_a():
-    n = 0
     while True:
         k = keys.pressed()
-        n += 1
-        if n % 100 == 0:
-            print("DBG wait_a tick", n, k)
         if "A" in k or "Y" in k or "press" in k:
             return
         time.sleep_ms(30)
