@@ -19,6 +19,7 @@ It needs wedgie.py beside it (curl -O https://wedgie.dev/wedgie.py) and pyserial
 The only press is the wedgie's own green one, for the save that carries the key over.
 """
 import argparse
+import base64
 import json
 import os
 import shutil
@@ -106,13 +107,13 @@ def packed(ac):
 
 
 def find_saves(obj, depth=0):
-    """The dict of save name -> value inside wedgie.py's backup, whatever shape it is."""
+    """wedgie.py's backup: {"wedgie-saves": 1, "files": {"/saves/codes/accounts.json": base64}}.
+    Returns that files dict, or None."""
     if isinstance(obj, dict):
-        vals = list(obj.values())
-        if vals and all(isinstance(v, (str, int, float, dict, list)) for v in vals) \
-                and any(isinstance(v, (str, dict, list)) for v in vals):
-            return obj
-        for v in vals:
+        f = obj.get("files")
+        if isinstance(f, dict):
+            return f
+        for v in obj.values():
             got = find_saves(v, depth + 1)
             if got is not None:
                 return got
@@ -122,6 +123,25 @@ def find_saves(obj, depth=0):
             if got is not None:
                 return got
     return None
+
+
+def save_path(name, mod="codes"):
+    return "/saves/%s/%s.json" % (mod, name)
+
+
+def read_save(files, name):
+    """A save's value as the app sees it (its file is base64 of JSON)."""
+    v = files.get(save_path(name))
+    if not v:
+        return None
+    try:
+        return json.loads(base64.b64decode(v).decode())
+    except Exception:
+        return None
+
+
+def write_save(files, name, value):
+    files[save_path(name)] = base64.b64encode(json.dumps(value).encode()).decode()
 
 
 def wedgie_py(*args):
@@ -162,7 +182,7 @@ def main():
         saves = find_saves(doc)
         if saves is None:
             raise SystemExit("wedgie.py's backup didn't look like saves; nothing was written")
-        saves["clock_set"] = int(time.time())
+        write_save(saves, "clock_set", int(time.time()))
         with open(back, "w") as f:
             json.dump(doc, f)
         print("handing your computer's time to the wedgie: press its green button when it asks.")
@@ -204,8 +224,8 @@ def main():
     saves = find_saves(doc)
     if saves is None:
         raise SystemExit("wedgie.py's backup didn't look like saves; nothing was written")
-    old = saves.get("import") if isinstance(saves.get("import"), str) else ""
-    saves["import"] = "\n".join([x for x in (old, *lines) if x])
+    old = read_save(saves, "import")
+    write_save(saves, "import", "\n".join([x for x in ([old] if isinstance(old, str) else []) + lines if x]))
     with open(back, "w") as f:
         json.dump(doc, f)
     print("\nhanding %d key%s to the wedgie: press its green button when it asks."
