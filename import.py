@@ -129,9 +129,15 @@ def wedgie_py(*args):
         raise SystemExit("wedgie.py isn't here. Get it:  curl -O https://wedgie.dev/wedgie.py")
     cmd = [sys.executable, WEDGIE] + list(args)
     print("$ " + " ".join(cmd[1:]), flush=True)
-    out = subprocess.run(cmd, text=True)
-    if out.returncode != 0:
-        raise SystemExit("wedgie.py %s failed (see above)" % args[0])
+    for attempt in (1, 2, 3):
+        out = subprocess.run(cmd, text=True)
+        if out.returncode == 0:
+            return
+        if attempt < 3:
+            # the wedgie re-enumerates on USB for a second or two after it restarts
+            print("(the wedgie wasn't answering; waiting 4 s and trying again)", flush=True)
+            time.sleep(4)
+    raise SystemExit("wedgie.py %s failed (see above)" % args[0])
 
 
 def main():
