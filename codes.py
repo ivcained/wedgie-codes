@@ -345,18 +345,14 @@ def ago():
 
 def sync():
     """The wedgie has no clock: ask cloudflare's trace page for the time."""
-    print("DBG sync enter")
     ui.progress("Setting the clock", "cloudflare.com", bar=False)
-    print("DBG progress drawn")
     try:
         import net
         txt = net.get(TIME_URL)
         i = txt.find("ts=")
         t = int(txt[i + 3:txt.find("\n", i)].split(".")[0])
     except Exception as e:                      # net.Error and the rest
-        print("DBG sync failed:", str(e)[:60])
         gc.collect()                           # its ~30 KB back
-        print("DBG gc done")
         s = str(e)
         if "chip" in s or "Trust M" in s:
             # chipless (/code): TLS needs the chip, so there is no internet at all
@@ -371,9 +367,7 @@ def sync():
                                       ("or run wedgie.py net", ui.MUTED)], "{g} back")
         else:
             ui.page(lcd, "No clock", [(s[:26], ui.RED), ("try again from the menu.", ui.MUTED)], "{g} back")
-        print("DBG page shown, wait_a")
         wait_a()
-        print("DBG wait_a returned")
         return False
     gc.collect()
     global clock
@@ -700,7 +694,6 @@ def add():
     shown = True
 
 
-print("DBG add finished")
 # ---------------------------------------------------------------- main loop
 
 def run():
