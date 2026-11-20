@@ -362,14 +362,9 @@ def sync():
         except Exception:
             pass
         return True
-    if not has_trustm():
-        # no chip means no TLS stack: don't waste 15 s failing at the network
-        ui.page(lcd, "No clock", [("no chip, so no net here.", ui.MUTED),
-                                  ("on your computer run:", ui.MUTED),
-                                  ("import.py --clock", ui.INK),
-                                  ("then press green.", ui.MUTED)], "{g} back")
-        wait_a()
-        return False
+    # no chip() gate here: chip() can say "none" on a unit that has one (the chip
+    # question, a busy I2C), and refusing to try would strand the clock forever.
+    # Just try; a chipless unit fails fast and its error page says what to do.
     ui.progress("Setting the clock", "cloudflare.com", bar=False)
     try:
         import net
