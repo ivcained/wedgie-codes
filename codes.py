@@ -364,6 +364,17 @@ def wait_a():
 
 # ---------------------------------------------------------------- screens
 
+_cached = (None, None, None)   # (the account, its code's window, the code): a code is
+                               # computed once per 30 s window, never per redraw
+
+
+def code_of(a, t):
+    global _cached
+    if _cached[0] is not a or _cached[1] != t // a["period"]:
+        _cached = (a, t // a["period"], totp(a, t))
+    return _cached[2]
+
+
 def draw_main():
     """The main screen, into the framebuffer only: the caller pushes what changed."""
     d = lcd
@@ -382,7 +393,7 @@ def draw_main():
             ui.say(d, "{g} clock  ·  press menu", 228, ui.MUTED)
         else:
             if shown:
-                c = totp(a, t)
+                c = code_of(a, t)
                 if a["digits"] == 8:
                     c = c[:4] + " " + c[4:]
                 else:
