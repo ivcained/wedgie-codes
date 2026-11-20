@@ -28,6 +28,23 @@ The key is typed on a 6×6 grid of letters and digits. up/down/left/right move, 
 cell is "ok", which files the key. A green press before the 8th letter does not
 silently do nothing: the count turns red and says how many letters are still needed.
 
+## The easy ways to add an account (pick one)
+
+The wedgie has no camera, so something else reads the QR. Three ways, all ending in the
+same place: one green press on the wedgie files the key into its chip.
+
+| Way | What you do | Needs |
+|---|---|---|
+| **A page, paste or drop** | `python3 import.py --serve` opens a page: paste the `otpauth://` link, or drag a screenshot of the QR onto it | a browser |
+| **Copy and forget** | `python3 import.py --watch` then copy the site's `otpauth://` link anywhere on your Mac | nothing else |
+| **Phone camera** | `python3 import.py --serve --lan`, open the printed address on your phone, tap the button and point it at the QR | a phone on the same wifi |
+
+All three queue the key and then wait for your green press; nothing is written to the
+wedgie without one. The page decodes QR images in the browser itself (no `zbar`, no
+installs), and the phone page does the same with the camera.
+
+Prefer the command line? All of these still work:
+
 ## The easy way: scan the QR with your Mac, not type 32 letters
 
 The wedgie has no camera, so your computer reads the QR and hands the key over USB.
