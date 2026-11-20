@@ -26,7 +26,7 @@ hide again when the code expires.
 ## The easy way: scan the QR with your Mac, not type 32 letters
 
 The wedgie has no camera, so your computer reads the QR and hands the key over USB.
-`import.py` (in this repo, beside `wedgie.py` and `pyserial`) takes the `otpauth://`
+`import.py` (in this repo; put `wedgie.py` beside it - `curl -O https://wedgie.dev/wedgie.py` - and `pip install pyserial`) takes the `otpauth://`
 link the QR holds - scan the QR with your phone camera to get it, or paste the link
 the setup page copies - and parks it where the wedgie finds it on its next start:
 
