@@ -345,7 +345,7 @@ def ago():
 
 def sync():
     """The wedgie has no clock: ask cloudflare's trace page for the time."""
-    ui.progress("Setting the clock", "cloudflare.com", bar=False)
+    ui.page(lcd, "Setting the clock", [("asking cloudflare.com", ui.MUTED), ("for the time: a few", ui.MUTED), ("seconds.", ui.MUTED)], "")
     try:
         import net
         txt = net.get(TIME_URL)
