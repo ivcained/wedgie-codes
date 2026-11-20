@@ -362,6 +362,14 @@ def sync():
         except Exception:
             pass
         return True
+    if not has_trustm():
+        # no chip means no TLS stack: don't waste 15 s failing at the network
+        ui.page(lcd, "No clock", [("no chip, so no net here.", ui.MUTED),
+                                  ("on your computer run:", ui.MUTED),
+                                  ("import.py --clock", ui.INK),
+                                  ("then press green.", ui.MUTED)], "{g} back")
+        wait_a()
+        return False
     ui.progress("Setting the clock", "cloudflare.com", bar=False)
     try:
         import net
