@@ -19,7 +19,9 @@ like everything wedgie.
 
 Adding an account: type a short name (optional), then the site's base32 secret key
 (from its 2FA setup page, the letters and digits without the spaces). A green press
-is needed to reveal a code: presses a computer sends over USB never count.
+is needed to reveal a code: presses a computer sends over USB never count. The next
+code is shown small under it, so you can keep typing when the window flips; both
+hide again when the code expires.
 
 ## Where the keys live (the honest security model)
 

@@ -364,15 +364,17 @@ def wait_a():
 
 # ---------------------------------------------------------------- screens
 
-_cached = (None, None, None)   # (the account, its code's window, the code): a code is
-                               # computed once per 30 s window, never per redraw
+_cached = (None, None, None, None)   # (the account, its code's window, the code, the next
+                                     # one): both are computed once per window, never redrawn
 
 
 def code_of(a, t):
+    """(this window's code, the next window's) — the Ente-style peek under the big code."""
     global _cached
-    if _cached[0] is not a or _cached[1] != t // a["period"]:
-        _cached = (a, t // a["period"], totp(a, t))
-    return _cached[2]
+    w = t // a["period"]
+    if _cached[0] is not a or _cached[1] != w:
+        _cached = (a, w, totp(a, t), totp(a, t + a["period"]))
+    return _cached[2], _cached[3]
 
 
 def draw_main():
@@ -393,12 +395,15 @@ def draw_main():
             ui.say(d, "{g} clock  ·  press menu", 228, ui.MUTED)
         else:
             if shown:
-                c = code_of(a, t)
+                c, nx = code_of(a, t)
                 if a["digits"] == 8:
                     c = c[:4] + " " + c[4:]
+                    nx = "next " + nx[:4] + " " + nx[4:]
                 else:
                     c = c[:3] + " " + c[3:]
-                d.big_text(c, (240 - 24 * len(c)) // 2, 92, ui.INK, 3)
+                    nx = "next " + nx[:3] + " " + nx[3:]
+                d.big_text(c, (240 - 24 * len(c)) // 2, 84, ui.INK, 3)
+                d.big_text(nx, (240 - 16 * len(nx)) // 2, 138, ui.MUTED, 2)
             else:
                 d.big_text("......", (240 - 24 * 6) // 2, 92, ui.MUTED, 3)
             left = a["period"] - t % a["period"]
