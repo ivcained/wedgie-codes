@@ -65,12 +65,16 @@ It refuses what the wedgie cannot do (SHA-256, HOTP, 7 digits) with a plain sent
 
 ## The clock (read this)
 
-The Pico has no clock and no battery, so the time has to come from somewhere once per
-power-up.
+The Pico has no clock, no battery and no radio. It runs only while plugged in, so every
+power-up needs a fresh time, and it can only reach the network through the computer it is
+plugged into. That makes this a desk authenticator, not a pocket one.
 
-- **With a Trust M chip:** it asks `www.cloudflare.com` for the time by itself on every
-  start (a "Setting the clock" page for a second or two). No computer, no press. It then
-  coasts on the crystal, which drifts a second or two a day.
+- **With a Trust M chip:** it can ask `www.cloudflare.com` for the time (a "Setting the
+  clock" page for a second or two). But note the wedgie has no radio: its internet is the
+  computer it is plugged into, so the fetch only works while the wedgie's page is open at
+  [wedgie.dev/connect](https://wedgie.dev/connect) or `python3 wedgie.py net` is running in
+  a terminal. With no tether there is no net, and the app says so instead of hanging. After
+  the fetch it coasts on the crystal, which drifts a second or two a day.
 - **Drifting, or the site and the wedgie disagree:** menu → **line up the clock**. The
   screen shows the wedgie's own countdown as a big number; compare it with the site's
   countdown and dial it with up/down (1 s) and left/right (5 s) until the two match, then
