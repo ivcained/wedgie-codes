@@ -406,6 +406,7 @@ def code_of(a, t):
 
 def draw_main():
     """The main screen, into the framebuffer only: the caller pushes what changed."""
+    print("DBG draw", len(accounts), shown)
     d = lcd
     d.fill(ui.WHITE)
     ui.band(d)
@@ -717,6 +718,7 @@ def run():
             tick = None
         key = (pick, shown, tick if shown else None)
         if key != drew:
+            print("DBG full show", key)
             draw_main()
             lcd.show()                   # the whole screen changed
             drew, drew_t = key, t
