@@ -183,6 +183,8 @@ def vault_probe():
     (no chip, a refused chip question, an optiga error); [] means the chip works and
     holds nothing of ours. Unparseable non-empty objects are other apps': skipped,
     never reused."""
+    if not has_trustm():
+        return None, "no Trust M"          # an ATECC or anything else answers too; it can't do this
     try:
         import optiga
     except ImportError:
