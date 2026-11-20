@@ -273,6 +273,20 @@ def migrate(old):
     return True
 
 
+def load_accounts():
+    """The accounts save as ONE string of packed lines (the browser-saves bridge of the
+    /code emulator locks up on lists of dicts; a string saves everywhere)."""
+    v = save.load("accounts", "")
+    if isinstance(v, list):                    # a save an older build made
+        return [a for a in v if a.get("secret")]
+    out = []
+    for line in (v or "").split("\n"):
+        ac = unpack(line) if line else None
+        if ac:
+            out.append(ac)
+    return out
+
+
 def load():
     global accounts, vault, vault_err, clock
     vault = False
@@ -280,14 +294,14 @@ def load():
     clock = save.load("clock", None)
     accs, err = vault_probe()
     if accs is not None:
-        old = [a for a in save.load("accounts", []) if a.get("secret")]
+        old = load_accounts()
         if old and ui.ask(lcd, "Move your keys into the chip?",
                           ["they leave its saves, where", "a plugged-in computer", "reads them with no press."]):
             accounts = accs
             if migrate(old):
                 vault = True
                 return
-        accounts = save.load("accounts", [])
+        accounts = load_accounts()
         if not accounts:
             accounts = accs
             vault = True
@@ -295,20 +309,20 @@ def load():
         vault_err = "keys are still in saves"
     else:
         vault_err = err or "chip off"
-        accounts = save.load("accounts", [])
+        accounts = load_accounts()
         sys.modules.pop("optiga", None)        # give its ~10 KB back
 
 
 def store_accounts():
-    """save mode only: the whole list back into the accounts save."""
+    """save mode only: the whole list back into the accounts save, one packed line each."""
     global accounts
     if vault:
         return
     try:
-        save.store("accounts", accounts)
+        save.store("accounts", "\n".join(pack(a) for a in accounts))
     except OSError:
         ui.page(lcd, "Flash full", [("its saves ran out of room.", ui.RED), ("delete one, then add.", ui.MUTED)], "{g} ok")
-    accounts = save.load("accounts", [])
+    accounts = load_accounts()
 
 
 def now():
@@ -331,14 +345,18 @@ def ago():
 
 def sync():
     """The wedgie has no clock: ask cloudflare's trace page for the time."""
+    print("DBG sync enter", flush=True)
     ui.progress("Setting the clock", "cloudflare.com", bar=False)
+    print("DBG progress drawn", flush=True)
     try:
         import net
         txt = net.get(TIME_URL)
         i = txt.find("ts=")
         t = int(txt[i + 3:txt.find("\n", i)].split(".")[0])
     except Exception as e:                      # net.Error and the rest
+        print("DBG sync failed:", str(e)[:60], flush=True)
         gc.collect()                           # its ~30 KB back
+        print("DBG gc done", flush=True)
         s = str(e)
         if "chip" in s or "Trust M" in s:
             # chipless (/code): TLS needs the chip, so there is no internet at all
@@ -353,7 +371,9 @@ def sync():
                                       ("or run wedgie.py net", ui.MUTED)], "{g} back")
         else:
             ui.page(lcd, "No clock", [(s[:26], ui.RED), ("try again from the menu.", ui.MUTED)], "{g} back")
+        print("DBG page shown, wait_a", flush=True)
         wait_a()
+        print("DBG wait_a returned", flush=True)
         return False
     gc.collect()
     global clock
@@ -368,8 +388,12 @@ def sync():
 
 
 def wait_a():
+    n = 0
     while True:
         k = keys.pressed()
+        n += 1
+        if n % 100 == 0:
+            print("DBG wait_a tick", n, k, flush=True)
         if "A" in k or "Y" in k or "press" in k:
             return
         time.sleep_ms(30)
@@ -680,6 +704,7 @@ def add():
     shown = True
 
 
+print("DBG add finished", flush=True)
 # ---------------------------------------------------------------- main loop
 
 def run():
