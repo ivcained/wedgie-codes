@@ -319,10 +319,13 @@ def store_accounts():
     if vault:
         return
     try:
+        print("DBG saving", len(accounts))
         save.store("accounts", "\n".join(pack(a) for a in accounts))
+        print("DBG saved")
     except OSError:
         ui.page(lcd, "Flash full", [("its saves ran out of room.", ui.RED), ("delete one, then add.", ui.MUTED)], "{g} ok")
     accounts = load_accounts()
+    print("DBG reloaded", len(accounts))
 
 
 def now():
@@ -692,6 +695,7 @@ def add():
     gc.collect()
     pick = len(accounts) - 1
     shown = True
+    print("DBG add done", len(accounts))
 
 
 # ---------------------------------------------------------------- main loop
