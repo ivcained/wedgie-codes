@@ -13,7 +13,7 @@ like everything wedgie.
 |---|---|
 | up / down | pick an account |
 | A (green) | show the code · press again to hide |
-| joystick press | the menu: add, set the clock, delete, about |
+| joystick press | the menu: add an account, set the clock, line up the clock, delete this one, about |
 | Y (red) | back out of a screen |
 | B (grey) | delete a letter while typing |
 
@@ -22,6 +22,11 @@ Adding an account: type a short name (optional), then the site's base32 secret k
 is needed to reveal a code: presses a computer sends over USB never count. The next
 code is shown small under it, so you can keep typing when the window flips; both
 hide again when the code expires.
+
+The key is typed on a 6×6 grid of letters and digits. up/down/left/right move, and
+**A (green) or pressing the stick in picks the highlighted letter**; the bottom-right
+cell is "ok", which files the key. A green press before the 8th letter does not
+silently do nothing: the count turns red and says how many letters are still needed.
 
 ## The easy way: scan the QR with your Mac, not type 32 letters
 
@@ -51,7 +56,8 @@ It refuses what the wedgie cannot do (SHA-256, HOTP, 7 digits) with a plain sent
   the key slots (Safe Signer's) and never calls `set_metadata` (it can lock the chip
   for good). Expect one "use the secure chip?" green press per start.
 - **Without a chip (the /code emulator), or if you answer no:** it falls back to
-  saves, exactly like v1, and says "keys in saves" on the menu.
+  saves, exactly like v1, and says "keys in saves" on the menu. Chipless also means no
+  TLS, so the clock has to be handed over from a computer (see above).
 - **What this is not:** the HMAC itself still runs on the Pico (a V1 Trust M has no
   HMAC), so a key is in RAM while its code is drawn. On a V3 chip, in-chip HMAC (the
   key never leaves) is the upgrade path, unimplemented until one can be tested for
@@ -59,11 +65,22 @@ It refuses what the wedgie cannot do (SHA-256, HOTP, 7 digits) with a plain sent
 
 ## The clock (read this)
 
-The Pico has no clock and no battery. The app sets its clock once from
-`www.cloudflare.com` over the wedgie's net, then coasts on the crystal (a few
-seconds a day at most). To set or re-set it, the wedgie needs its internet: its
-page on [wedgie.dev](https://wedgie.dev/connect) open in a tab, or
-`python3 wedgie.py net` in a terminal. Without a clock set, no codes.
+The Pico has no clock and no battery, so the time has to come from somewhere once per
+power-up.
+
+- **With a Trust M chip:** it asks `www.cloudflare.com` for the time by itself on every
+  start (a "Setting the clock" page for a second or two). No computer, no press. It then
+  coasts on the crystal, which drifts a second or two a day.
+- **Drifting, or the site and the wedgie disagree:** menu → **line up the clock**. The
+  screen shows the wedgie's own countdown as a big number; compare it with the site's
+  countdown and dial it with up/down (1 s) and left/right (5 s) until the two match, then
+  green. This is exact, and it is the only fix you need if the codes ever stop matching.
+- **Without a chip** there is no TLS stack, so it cannot ask the net. Hand it the time
+  from your computer with `python3 import.py --clock` (green press on the wedgie, then
+  press A), then line it up as above if it is a second or two off.
+
+A clock stamped before a reboot is thrown away rather than trusted: the uptime counter
+restarts at zero, so an old stamp would be hours off.
 
 ## Saves
 
