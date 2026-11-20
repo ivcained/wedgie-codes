@@ -25,6 +25,7 @@ import shutil
 import re
 import subprocess
 import sys
+import time
 import tempfile
 from urllib.parse import unquote, parse_qs, urlparse
 
@@ -141,9 +142,28 @@ def main():
     ap.add_argument("--digits", type=int, default=0)
     ap.add_argument("--period", type=int, default=0)
     ap.add_argument("--dry-run", action="store_true", help="print what would be imported")
+    ap.add_argument("--clock", action="store_true",
+                    help="hand your computer's time to the wedgie instead (no internet needed)")
     a = ap.parse_args()
 
     acs = []
+    if a.clock:
+        tmp = tempfile.mkdtemp(prefix="wedgie-clock-")
+        back = os.path.join(tmp, "saves.json")
+        wedgie_py("saves", "backup", back)
+        with open(back) as f:
+            doc = json.load(f)
+        saves = find_saves(doc)
+        if saves is None:
+            raise SystemExit("wedgie.py's backup didn't look like saves; nothing was written")
+        saves["clock_set"] = int(time.time())
+        with open(back, "w") as f:
+            json.dump(doc, f)
+        print("handing your computer's time to the wedgie: press its green button when it asks.")
+        wedgie_py("saves", "restore", back)
+        print("\nthen on the wedgie press green (or menu -> set the clock): it takes the time\n"
+              "and the codes work without any internet.")
+        return
     if a.secret:
         acs.append({"name": a.name or "account", "secret": clean_key(a.secret),
                     "digits": a.digits or 6, "period": a.period or 30, "algo": "SHA1"})

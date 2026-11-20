@@ -344,7 +344,18 @@ def ago():
 
 
 def sync():
-    """The wedgie has no clock: ask cloudflare's trace page for the time."""
+    """The wedgie has no clock: ask cloudflare's trace page for the time, or take the time
+    a computer handed over (import.py --clock) - a wedgie with no chip can't do TLS at all."""
+    global clock
+    handed = save.load("clock_set", 0)
+    if handed:
+        clock = {"t": int(handed) + 2, "ms": time.ticks_ms()}   # +2: the boot and this press
+        save.store("clock", clock)
+        try:
+            save.delete("clock_set")
+        except Exception:
+            pass
+        return True
     ui.progress("Setting the clock", "cloudflare.com", bar=False)
     try:
         import net
@@ -354,7 +365,12 @@ def sync():
     except Exception as e:                      # net.Error and the rest
         gc.collect()                           # its ~30 KB back
         s = str(e)
-        if "chip" in s or "Trust M" in s:
+        if isinstance(e, MemoryError) or "alloc" in s.lower():
+            ui.page(lcd, "No clock", [("no memory for TLS:", ui.RED),
+                                      ("this wedgie has no chip,", ui.MUTED),
+                                      ("so it can't reach the net.", ui.MUTED),
+                                      ("set it from your computer", ui.MUTED)], "{g} back")
+        elif "chip" in s or "Trust M" in s:
             # chipless (/code): TLS needs the chip, so there is no internet at all
             ui.page(lcd, "No clock", [("this emulator has no chip,", ui.RED),
                                       ("so no internet here.", ui.MUTED),
@@ -370,7 +386,6 @@ def sync():
         wait_a()
         return False
     gc.collect()
-    global clock
     old = now()
     clock = {"t": t, "ms": time.ticks_ms()}
     save.store("clock", clock)
@@ -570,12 +585,12 @@ def kb_render(prompt, s, cx, cy, minimum=0, blocked=False):
             d.text("<", x * CW + 17, y * CH + KY + 8, ui.RED)
     d.rect(cx * CW + 2, cy * CH + KY + 2, CW - 4, CH - 4, ui.GREEN)
     d.rect(cx * CW + 3, cy * CH + KY + 3, CW - 6, CH - 6, ui.GREEN)
-    ui.say(d, "{g} pick · {k} del · press ok", 228, ui.MUTED)
+    ui.say(d, "{g} pick · {k} del · ok to end", 228, ui.MUTED)
 
 
 def keyboard(prompt, minimum=0):
-    """Type with the joystick: A (or X) picks, B deletes, press (or the ok cell)
-    finishes, Y quits. An arrow held down repeats: slowly at first, then fast."""
+    """Type with the joystick: A or a press on a letter picks it, B deletes, the ok cell
+    (bottom right) finishes, Y quits. An arrow held down repeats: slowly, then fast."""
     s = ""
     cx = cy = 0
     rep = 0                   # the last move's ticks (0: none)
@@ -588,7 +603,7 @@ def keyboard(prompt, minimum=0):
     while True:
         k = keys.pressed()
         was = (cx, cy, s, blocked)
-        if "A" in k or "X" in k:
+        if "A" in k or "X" in k or "press" in k:
             i = cy * COLS + cx
             if i == 32:
                 s = s[:-1]
@@ -600,10 +615,6 @@ def keyboard(prompt, minimum=0):
                 s += B32[i]
         if "B" in k:
             s = s[:-1]
-        if "press" in k:
-            blocked = len(s) < minimum
-            if not blocked:
-                return s
         if "Y" in k:
             if not s or ui.ask(lcd, "Throw it away?", ["what you typed is lost."]):
                 return None
