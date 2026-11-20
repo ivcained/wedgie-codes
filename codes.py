@@ -517,16 +517,21 @@ def kb_cell(i):
     return i % COLS, i // COLS
 
 
-def kb_render(prompt, s, cx, cy):
+def kb_render(prompt, s, cx, cy, minimum=0, blocked=False):
     """The keyboard, into the framebuffer only. The caller pushes what changed: the
     typed line on a letter, the two cells on a cursor move, everything after an ask."""
     d = lcd
     d.fill(ui.WHITE)
     ui.band(d)
     d.text(prompt, 4, 10, ui.INK)
-    tail = s[-16:]
-    d.text(((".." + tail) if len(s) > 16 else tail) or "-", 4, 28, ui.MUTED)
-    d.text(str(len(s)), ui.right() - 8 * (2 if len(s) > 9 else 1), 28, ui.MUTED)
+    if blocked and len(s) < minimum:
+        ui.say(d, "need %d more letters" % (minimum - len(s)), 28, ui.RED)
+    else:
+        tail = s[-26:]
+        d.text(((">>" + tail) if len(s) > 26 else tail) or "-", 4, 28, ui.MUTED)
+    count = str(len(s))
+    cc = ui.RED if len(s) < minimum else ui.MUTED
+    d.text(count, ui.right() - 8 * len(count), 28, cc)
     for i in range(32):
         x, y = kb_cell(i)
         d.text(B32[i], x * CW + 17, y * CH + KY + 8, ui.INK)
@@ -542,36 +547,45 @@ def kb_render(prompt, s, cx, cy):
 
 
 def keyboard(prompt, minimum=0):
-    """Type with the joystick: A picks, B deletes, press (or the ok cell) finishes,
-    Y quits. An arrow held down repeats: slowly at first, then fast."""
+    """Type with the joystick: A (or X) picks, B deletes, press (or the ok cell)
+    finishes, Y quits. An arrow held down repeats: slowly at first, then fast."""
     s = ""
     cx = cy = 0
     rep = 0                   # the last move's ticks (0: none)
     delay = 350
+    blocked = False           # an ok came while still short of the minimum
     DIRS = (("left", -1, 0), ("right", 1, 0), ("up", 0, -1), ("down", 0, 1))
-    kb_render(prompt, s, cx, cy)
+    kb_render(prompt, s, cx, cy, minimum)
     lcd.show()
     full = False              # an ask covered the screen: redraw it all
     while True:
         k = keys.pressed()
-        was = (cx, cy, s)
-        if "A" in k:
+        was = (cx, cy, s, blocked)
+        if "A" in k or "X" in k:
             i = cy * COLS + cx
             if i == 32:
                 s = s[:-1]
             elif i == 33:
-                if len(s) >= minimum:
+                blocked = len(s) < minimum
+                if not blocked:
                     return s
             else:
                 s += B32[i]
         if "B" in k:
             s = s[:-1]
-        if "press" in k and len(s) >= minimum:
-            return s
+        if "press" in k:
+            blocked = len(s) < minimum
+            if not blocked:
+                return s
         if "Y" in k:
             if not s or ui.ask(lcd, "Throw it away?", ["what you typed is lost."]):
                 return None
             full = True
+        if k:
+            if s != was[2]:
+                blocked = False   # typed or deleted: back to the tail
+            elif "Y" not in k and "press" not in k and "A" not in k and "X" not in k:
+                blocked = False   # a plain move: the "need more" line goes away
         moved = False
         for name, dx, dy in DIRS:
             if name in k:
@@ -591,12 +605,12 @@ def keyboard(prompt, minimum=0):
                     delay = 130
                     moved = True
                 break
-        if (cx, cy, s) != was or full:
-            kb_render(prompt, s, cx, cy)
+        if (cx, cy, s, blocked) != was or full:
+            kb_render(prompt, s, cx, cy, minimum, blocked)
             if full:
                 lcd.show()
                 full = False
-            elif s != was[2]:
+            elif s != was[2] or blocked != was[3]:
                 lcd.show_rect(0, 22, 240, 16)               # the typed line and count
             else:
                 ox, oy = was[0], was[1]                     # only the cursor moved
