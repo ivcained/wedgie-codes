@@ -328,10 +328,14 @@ def store_accounts():
 
 
 def now():
-    """Unix seconds, or None before the first clock set. ticks_diff wraps safely."""
+    """Unix seconds, or None before the first clock set. A clock set before a reboot is
+    useless: ticks_ms starts again at 0, so it must be handed over again."""
     if not clock:
         return None
-    return clock["t"] + time.ticks_diff(time.ticks_ms(), clock["ms"]) // 1000
+    age = time.ticks_diff(time.ticks_ms(), clock["ms"])
+    if age < 0:                      # uptime went backwards: this clock is from before the reboot
+        return None
+    return clock["t"] + age // 1000
 
 
 def ago():
@@ -435,7 +439,7 @@ def draw_main():
         t = now()
         if t is None:
             ui.say(d, "no clock", 96, ui.RED, 2)
-            ui.say(d, "codes need the right time", 130, ui.MUTED)
+            ui.say(d, "press A: time from your Mac", 130, ui.MUTED)
             ui.say(d, "{g} clock  ·  press menu", 228, ui.MUTED)
         else:
             if shown:
