@@ -403,27 +403,58 @@ def sync():
 
 
 def align():
-    """Line the clock up by hand: green the instant the site's own countdown flips to 30.
-    That press IS a window start, so the clock can be snapped to it exactly."""
+    """Line the clock up by eye: the screen shows the wedgie's own countdown, nudge it
+    until it reads the same as the site's (then they flip together)."""
     global clock
-    t = now()
-    if t is None:
-        ui.page(lcd, "No clock yet", [("take the time from your", ui.MUTED), ("computer first (import.py", ui.MUTED), ("--clock), then line it up.", ui.MUTED)], "{g} back")
+    if now() is None:
+        ui.page(lcd, "No clock yet", [("take the time from your", ui.MUTED),
+                                      ("computer first (import.py", ui.MUTED),
+                                      ("--clock), then line it up.", ui.MUTED)], "{g} back")
         wait_a()
         return
-    ui.page(lcd, "Line up the clock", [("watch the site's own", ui.INK),
-                                       ("countdown, then press", ui.INK),
-                                       ("green the instant it", ui.INK),
-                                       ("flips back to 30.", ui.INK)], "{g} it flipped")
-    wait_a()
-    t = now()
-    if t is None:
-        return
-    base = int((t + 15) // 30) * 30        # the nearest window start to that press
-    clock = {"t": base, "ms": time.ticks_ms()}
-    save.store("clock", clock)
-    ui.page(lcd, "Clock lined up", [("its countdown now flips", ui.INK), ("with the site's.", ui.MUTED)], "{g} ok")
-    wait_a()
+    off = 0
+    while True:
+        t = now()
+        if t is None:
+            return
+        left = 30 - (t + off) % 30
+        d = lcd
+        d.fill(ui.WHITE)
+        ui.band(d)
+        d.text("line up the clock", 4, 10, ui.INK)
+        d.text("site says one of 1-30", 4, 36, ui.MUTED)
+        num = str(left)
+        d.big_text(num, (240 - 24 * len(num)) // 2, 78, ui.INK, 3)
+        d.text("seconds left", (240 - 12 * 8) // 2, 126, ui.MUTED)
+        if off:
+            d.text("%+ds from here" % off, 4, 146, ui.GREEN_D)
+        ui.say(d, "up/down 1s · left/right 5s", 160, ui.MUTED)
+        ui.say(d, "{g} save · {r} cancel", 228, ui.MUTED)
+        d.show()
+        while True:
+            k = keys.pressed()
+            if k:
+                break
+            time.sleep_ms(40)
+        if "up" in k:
+            off -= 1
+        elif "down" in k:
+            off += 1
+        elif "left" in k:
+            off -= 5
+        elif "right" in k:
+            off += 5
+        elif "A" in k or "press" in k:
+            t = now()
+            if t is None:
+                return
+            clock = {"t": t + off, "ms": time.ticks_ms()}
+            save.store("clock", clock)
+            ui.page(lcd, "Clock lined up", [("its countdown now flips", ui.INK), ("with the site's.", ui.MUTED)], "{g} ok")
+            wait_a()
+            return
+        elif "Y" in k:
+            return
 
 
 def wait_a():
