@@ -836,6 +836,9 @@ def run():
     global pick, shown
     load()
     gc.collect()             # the chip probe and the optiga import's leavings
+    if now() is None and has_trustm():
+        sync()               # a chip can ask the net for the time: no press, no computer
+        gc.collect()
     shown = False
     take_import()            # keys a computer handed over (import.py): one green press
     drew = None              # (account, shown, its code window) now on screen
